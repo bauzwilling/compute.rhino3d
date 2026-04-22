@@ -16,13 +16,14 @@ namespace compute.geometry
 
         public void ConfigureServices(IServiceCollection services)
         {
+            services.AddRequestDecompression();
             services.AddCors(options =>
             {
                 options.AddDefaultPolicy(
                     builder =>
-                    {
-                        builder.AllowAnyOrigin().AllowAnyHeader();
-                    });
+                {
+                    builder.AllowAnyOrigin().AllowAnyHeader();
+                });
             });
             services.AddHealthChecks();
             services.AddCarter();
@@ -32,6 +33,7 @@ namespace compute.geometry
         {
             RhinoCoreStartup();
 
+            app.UseRequestDecompression();
             app.UseRouting();
             app.UseCors();
             app.UseEndpoints(builder =>
@@ -47,7 +49,7 @@ namespace compute.geometry
 
             if (Config.Debug)
                 Rhino.RhinoApp.SendWriteToConsole = true;
-            
+
             Environment.SetEnvironmentVariable("RHINO_TOKEN", null, EnvironmentVariableTarget.Process);
             Rhino.Runtime.HostUtils.OnExceptionReport += (source, ex) =>
             {

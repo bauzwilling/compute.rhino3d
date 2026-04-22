@@ -139,7 +139,7 @@ namespace rhino.compute
                     using (var sw = new System.IO.StreamReader(initialRequest.BodyReader.AsStream()))
                     {
                         string body = sw.ReadToEnd();
-                        using (var stringContent = new StringContent(body, System.Text.Encoding.UTF8, "applicaton/json"))
+                        using (var stringContent = new StringContent(body, System.Text.Encoding.UTF8, "application/json"))
                         {
                             req.Content = stringContent;
                             return await _client.SendAsync(req);
@@ -170,6 +170,7 @@ namespace rhino.compute
 
                 responseString = await proxyResponse.Content.ReadAsStringAsync();
             }
+            res.ContentType = "application/json";
             await res.WriteAsync(responseString);
         }
 
@@ -186,6 +187,7 @@ namespace rhino.compute
                     ComputeChildren.MoveToFrontOfQueue(port);
 
                 res.StatusCode = (int)proxyResponse.StatusCode;
+                res.ContentType = "application/json";
                 responseString = await proxyResponse.Content.ReadAsStringAsync();
             }
             await res.WriteAsync(responseString);
@@ -204,6 +206,7 @@ namespace rhino.compute
                     ComputeChildren.MoveToFrontOfQueue(port);
 
                 res.StatusCode = (int)proxyResponse.StatusCode;
+                res.ContentType = "application/json";
                 responseString = await proxyResponse.Content.ReadAsStringAsync();
             }
             await res.WriteAsync(responseString);

@@ -10,6 +10,7 @@
     {
         public void ConfigureServices(IServiceCollection services)
         {
+            services.AddRequestDecompression();
             services.AddCors(options =>
             {
                 options.AddDefaultPolicy(
@@ -25,6 +26,7 @@
         public void Configure(IApplicationBuilder app)
         {
             app.UseSerilogRequestLogging();
+            app.UseRequestDecompression();
             app.UseRouting();
             app.UseCors();
             if (!String.IsNullOrEmpty(Config.ApiKey))
