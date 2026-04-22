@@ -339,66 +339,85 @@ namespace compute.geometry
             StopAt stopat = StopAt.None;
             bool multiple = false;
             Dictionary<string, string> returnModifiers = null;
-            foreach (string name in context.Request.Query.Keys)
-            {
-                if (name.StartsWith("return.", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    if (returnModifiers == null)
-                        returnModifiers = new Dictionary<string, string>();
-                    string dataType = "Rhino.Geometry." + name.Substring("return.".Length);
-                    string items = context.Request.Query[name];
-                    returnModifiers[dataType] = items;
-                    continue;
-                }
-                if (name.Equals("multiple", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    multiple = bool.Parse(context.Request.Query[name][0]);
-                    continue;
-                }
-                if (name.Equals("stopat", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    int val = int.Parse(context.Request.Query[name][0]);
-                    stopat = (StopAt)val;
-                }
-            }
-            if (StopAt.PostStart == stopat)
-            {
-                await context.Response.WriteAsync($"{(DateTime.Now - start).TotalSeconds}");
-                return;
-            }
 
-            var jsonString = await new System.IO.StreamReader(context.Request.Body).ReadToEndAsync();
-            if (StopAt.BodyToString == stopat)
-            {
-                await context.Response.WriteAsync($"{(DateTime.Now - start).TotalSeconds}");
-                return;
-            }
+            Rhino.RhinoDoc createdDoc = null;
 
-            object data = string.IsNullOrWhiteSpace(jsonString) ? null : JsonConvert.DeserializeObject(jsonString);
-            var ja = data as Newtonsoft.Json.Linq.JArray;
-            string resultString = null;
-            if (multiple && ja.Count > 1)
+            try
             {
-                var result = new System.Text.StringBuilder("[");
-                for (int i = 0; i < ja.Count; i++)
+                if (Config.CreateHeadlessDoc)
                 {
-                    if (i > 0)
-                        result.Append(",");
-                    var item = ja[i] as Newtonsoft.Json.Linq.JArray;
-                    result.Append(HandlePostHelper(item, returnModifiers));
+                    createdDoc = Rhino.RhinoDoc.CreateHeadless(null);
+                    Rhino.RhinoDoc.ActiveDoc = createdDoc;
                 }
-                result.Append("]");
-                resultString = result.ToString();
-            }
-            else
-                resultString = HandlePostHelper(ja, returnModifiers);
 
-            if (StopAt.CalculationsComplete == stopat)
-            {
-                await context.Response.WriteAsync($"{(DateTime.Now - start).TotalSeconds}");
-                return;
+                foreach (string name in context.Request.Query.Keys)
+                {
+                    if (name.StartsWith("return.", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        if (returnModifiers == null)
+                            returnModifiers = new Dictionary<string, string>();
+                        string dataType = "Rhino.Geometry." + name.Substring("return.".Length);
+                        string items = context.Request.Query[name];
+                        returnModifiers[dataType] = items;
+                        continue;
+                    }
+                    if (name.Equals("multiple", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        multiple = bool.Parse(context.Request.Query[name][0]);
+                        continue;
+                    }
+                    if (name.Equals("stopat", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        int val = int.Parse(context.Request.Query[name][0]);
+                        stopat = (StopAt)val;
+                    }
+                }
+                if (StopAt.PostStart == stopat)
+                {
+                    await context.Response.WriteAsync($"{(DateTime.Now - start).TotalSeconds}");
+                    return;
+                }
+
+                var jsonString = await new System.IO.StreamReader(context.Request.Body).ReadToEndAsync();
+                if (StopAt.BodyToString == stopat)
+                {
+                    await context.Response.WriteAsync($"{(DateTime.Now - start).TotalSeconds}");
+                    return;
+                }
+
+                object data = string.IsNullOrWhiteSpace(jsonString) ? null : JsonConvert.DeserializeObject(jsonString);
+                var ja = data as Newtonsoft.Json.Linq.JArray;
+                string resultString = null;
+                if (multiple && ja.Count > 1)
+                {
+                    var result = new System.Text.StringBuilder("[");
+                    for (int i = 0; i < ja.Count; i++)
+                    {
+                        if (i > 0)
+                            result.Append(",");
+                        var item = ja[i] as Newtonsoft.Json.Linq.JArray;
+                        result.Append(HandlePostHelper(item, returnModifiers));
+                    }
+                    result.Append("]");
+                    resultString = result.ToString();
+                }
+                else
+                    resultString = HandlePostHelper(ja, returnModifiers);
+
+                if (StopAt.CalculationsComplete == stopat)
+                {
+                    await context.Response.WriteAsync($"{(DateTime.Now - start).TotalSeconds}");
+                    return;
+                }
+                await context.Response.WriteAsync(resultString);
             }
-            await context.Response.WriteAsync(resultString);
+            finally
+            {
+                if (createdDoc != null)
+                {
+                    createdDoc.Dispose();
+                }
+            }
         }
 
         static object ProcessModifiers(object o, Dictionary<string, string> returnModifiers)
