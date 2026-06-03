@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -134,16 +135,13 @@ namespace rhino.compute
                 if (initialRequest.Headers.TryGetValue(_apiKeyHeader, out var keyHeader))
                     req.Headers.Add(_apiKeyHeader, keyHeader.ToString());
 
-                using (var stream = initialRequest.BodyReader.AsStream(false))
+                using (var sw = new System.IO.StreamReader(initialRequest.Body, System.Text.Encoding.UTF8))
                 {
-                    using (var sw = new System.IO.StreamReader(initialRequest.BodyReader.AsStream()))
+                    string body = await sw.ReadToEndAsync();
+                    using (var stringContent = new StringContent(body, System.Text.Encoding.UTF8, "application/json"))
                     {
-                        string body = sw.ReadToEnd();
-                        using (var stringContent = new StringContent(body, System.Text.Encoding.UTF8, "application/json"))
-                        {
-                            req.Content = stringContent;
-                            return await _client.SendAsync(req);
-                        }
+                        req.Content = stringContent;
+                        return await _client.SendAsync(req);
                     }
                 }
             }
@@ -159,7 +157,6 @@ namespace rhino.compute
         private async Task ReverseProxyGet(HttpRequest req, HttpResponse res)
         {
             await AwaitInitTask();
-            string responseString;
             using (var tracker = new ConcurrentRequestTracker())
             {
                 var (baseurl, port) = ComputeChildren.GetComputeServerBaseUrl();
@@ -168,16 +165,23 @@ namespace rhino.compute
                 if (proxyResponse.StatusCode == System.Net.HttpStatusCode.OK)
                     ComputeChildren.MoveToFrontOfQueue(port);
 
-                responseString = await proxyResponse.Content.ReadAsStringAsync();
+                res.StatusCode = (int)proxyResponse.StatusCode;
+
+                foreach (var header in proxyResponse.Headers)
+                    res.Headers[header.Key] = header.Value.ToArray();
+
+                foreach (var header in proxyResponse.Content.Headers)
+                    res.Headers[header.Key] = header.Value.ToArray();
+
+                res.Headers.Remove("transfer-encoding");
+
+                await proxyResponse.Content.CopyToAsync(res.Body);
             }
-            res.ContentType = "application/json";
-            await res.WriteAsync(responseString);
         }
 
         private async Task ReverseProxyPost(HttpRequest req, HttpResponse res)
         {
             await AwaitInitTask();
-            string responseString;
             using (var tracker = new ConcurrentRequestTracker())
             {
                 var (baseurl, port) = ComputeChildren.GetComputeServerBaseUrl();
@@ -187,16 +191,22 @@ namespace rhino.compute
                     ComputeChildren.MoveToFrontOfQueue(port);
 
                 res.StatusCode = (int)proxyResponse.StatusCode;
-                res.ContentType = "application/json";
-                responseString = await proxyResponse.Content.ReadAsStringAsync();
+
+                foreach (var header in proxyResponse.Headers)
+                    res.Headers[header.Key] = header.Value.ToArray();
+
+                foreach (var header in proxyResponse.Content.Headers)
+                    res.Headers[header.Key] = header.Value.ToArray();
+
+                res.Headers.Remove("transfer-encoding");
+
+                await proxyResponse.Content.CopyToAsync(res.Body);
             }
-            await res.WriteAsync(responseString);
         }
 
         private async Task ReverseProxyGrasshopper(HttpRequest req, HttpResponse res)
         {
             await AwaitInitTask();
-            string responseString;
             using (var tracker = new ConcurrentRequestTracker())
             {
                 var (baseurl, port) = ComputeChildren.GetComputeServerBaseUrl();
@@ -206,10 +216,17 @@ namespace rhino.compute
                     ComputeChildren.MoveToFrontOfQueue(port);
 
                 res.StatusCode = (int)proxyResponse.StatusCode;
-                res.ContentType = "application/json";
-                responseString = await proxyResponse.Content.ReadAsStringAsync();
+
+                foreach (var header in proxyResponse.Headers)
+                    res.Headers[header.Key] = header.Value.ToArray();
+
+                foreach (var header in proxyResponse.Content.Headers)
+                    res.Headers[header.Key] = header.Value.ToArray();
+
+                res.Headers.Remove("transfer-encoding");
+
+                await proxyResponse.Content.CopyToAsync(res.Body);
             }
-            await res.WriteAsync(responseString);
         }
     }
 }

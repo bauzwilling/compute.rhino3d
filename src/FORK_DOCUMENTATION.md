@@ -23,12 +23,12 @@ This fork includes the following commits:
 **Date:** April 22, 2026  
 **Author:** Mostafa Nouh
 
-**Description:** Implements gzip request body compression in the compute client to complement server-side decompression, achieving up to 5x performance improvement for large payloads.
+**Description:** Implements gzip request body compression in the compute client to complement server-side decompression. Request gzip is enabled by default and can be disabled by setting `ComputeServer.UseRequestGzip = false`.
 
 **Files Modified:**
 - `src/compute.geometry/RhinoCompute.cs` - Added gzip request compression and response decompression support
 
-**Impact:** Reduces bandwidth usage significantly (up to 5x faster transfer times) and improves overall request/response performance, especially for large geometry payloads.
+**Impact:** Reduces bandwidth usage significantly and improves overall request/response performance, especially for large geometry payloads, while preserving plain JSON compatibility for clients that opt out of request gzip.
 
 ### 3. Fix Issue of the Unroller on Rhino Compute (12c0792)
 **Date:** April 22, 2026  
@@ -137,12 +137,31 @@ dotnet run
 ## Technical Details
 
 ### Request Compression
-The implementation adds support for gzip-compressed request bodies and automatic gzip/deflate response decompression in the compute client. This can significantly improve request/response performance, often yielding up to 5x faster transfer times for large payloads.
+The implementation adds gzip-compressed request bodies and automatic gzip/deflate response decompression in the compute client. Request gzip is enabled by default through `ComputeServer.UseRequestGzip = true`.
+
+Request compression controls the client-to-server trip. By default, compute client POST bodies are sent as compressed JSON with:
+
+```http
+Content-Type: application/json
+Content-Encoding: gzip
+```
+
+Clients can still send plain JSON by opting out:
+
+```csharp
+ComputeServer.UseRequestGzip = false;
+```
+
+When request gzip is disabled, the client sends the POST body as plain JSON with `Content-Type: application/json` and no `Content-Encoding` header.
+
+Response decompression controls the server-to-client trip. The client enables gzip/deflate response decompression so that, if IIS or another server layer returns a compressed response, the client automatically decompresses it before application code reads the JSON result.
 
 This change is implemented in `src/compute.geometry/RhinoCompute.cs` by:
 - setting `HttpWebRequest.AutomaticDecompression` for GZip and Deflate
-- adding `Content-Encoding: gzip` to outgoing requests
-- compressing the JSON payload using `GZipStream`
+- enabling `ComputeServer.UseRequestGzip` by default
+- adding `Content-Encoding: gzip` to outgoing requests when request gzip is enabled
+- compressing the JSON payload using `GZipStream` when request gzip is enabled
+- preserving plain JSON requests when `ComputeServer.UseRequestGzip` is set to `false`
 
 ### IIS Compression Configuration
 To enable response compression in IIS:
@@ -165,7 +184,7 @@ You can also configure IIS in `web.config`:
 </system.webServer>
 ```
 
-For request compression, IIS does not automatically decompress incoming gzip request bodies by default, so the application must handle them. In this fork, the compute client sends gzip-compressed JSON requests and the server must accept `Content-Encoding: gzip` headers. When using IIS as a reverse proxy to Kestrel, ensure IIS forwards request bodies unchanged and does not reject the `Content-Encoding` header.
+For request compression, IIS does not automatically decompress incoming gzip request bodies by default, so the application must handle them. In this fork, the compute client sends gzip-compressed JSON requests by default and the server must accept `Content-Encoding: gzip` headers. Plain JSON requests are still supported when clients set `ComputeServer.UseRequestGzip = false` or use another client that does not compress request bodies. When using IIS as a reverse proxy to Kestrel, ensure IIS forwards request bodies unchanged and does not reject the `Content-Encoding` header.
 
 ### Geometry Unroller Fixes
 The critical fix addresses the `AccessViolationException` that occurred when calling unroller operations on custom geometry endpoints. The solution ensures that:

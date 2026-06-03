@@ -15,6 +15,7 @@ namespace Rhino.Compute
 		public static string AuthToken { get; set; }
 		public static string ApiKey { get; set; }
 		public static string Version => "0.12.0";
+		public static bool UseRequestGzip { get; set; } = true;
 
 		public static T Post<T>(string function, params object[] postData)
 		{
@@ -102,21 +103,30 @@ namespace Rhino.Compute
 				System.Net.DecompressionMethods.GZip |
 				System.Net.DecompressionMethods.Deflate;
 
-			// send request body as gzip
-			request.Headers[System.Net.HttpRequestHeader.ContentEncoding] = "gzip";
-
 			if (!string.IsNullOrWhiteSpace(AuthToken))
 				request.Headers.Add("Authorization", "Bearer " + AuthToken);
 
 			if (!string.IsNullOrWhiteSpace(ApiKey))
 				request.Headers.Add("RhinoComputeKey", ApiKey);
 
-			var bytes = Encoding.UTF8.GetBytes(json);
-
-			using (var requestStream = request.GetRequestStream())
-			using (var gzip = new GZipStream(requestStream, CompressionMode.Compress))
+			if (UseRequestGzip)
 			{
-				gzip.Write(bytes, 0, bytes.Length);
+				request.Headers[System.Net.HttpRequestHeader.ContentEncoding] = "gzip";
+
+				var bytes = Encoding.UTF8.GetBytes(json);
+				using (var requestStream = request.GetRequestStream())
+				using (var gzip = new GZipStream(requestStream, CompressionMode.Compress))
+				{
+					gzip.Write(bytes, 0, bytes.Length);
+				}
+			}
+			else
+			{
+				using (var streamWriter = new System.IO.StreamWriter(request.GetRequestStream()))
+				{
+					streamWriter.Write(json);
+					streamWriter.Flush();
+				}
 			}
 
 			return request.GetResponse();

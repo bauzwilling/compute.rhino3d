@@ -3,6 +3,7 @@ using System.IO;
 using Rhino.Geometry;
 using Rhino.Geometry.Intersect;
 using System.Collections.Generic;
+using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using Newtonsoft.Json;
 using Rhino.Collections;
@@ -17,6 +18,7 @@ namespace Rhino.Compute
         public static string AuthToken { get; set; }
         public static string ApiKey { get; set; }
         public static string Version => "0.12.2";
+        public static bool UseRequestGzip { get; set; } = true;
 
         public static T Post<T>(string function, params object[] postData)
         {
@@ -89,6 +91,9 @@ namespace Rhino.Compute
             request.ContentType = "application/json";
             request.UserAgent = $"compute.rhino3d.cs/{Version}";
             request.Method = "POST";
+            request.AutomaticDecompression =
+                System.Net.DecompressionMethods.GZip |
+                System.Net.DecompressionMethods.Deflate;
 
             // try auth token (compute.rhino3d.com only)
             if (!string.IsNullOrWhiteSpace(AuthToken))
@@ -98,10 +103,24 @@ namespace Rhino.Compute
             if (!string.IsNullOrWhiteSpace(ApiKey))
                 request.Headers.Add("RhinoComputeKey", ApiKey);
             
-            using (var streamWriter = new StreamWriter(request.GetRequestStream()))
+            if (UseRequestGzip)
             {
-                streamWriter.Write(json);
-                streamWriter.Flush();
+                request.Headers[System.Net.HttpRequestHeader.ContentEncoding] = "gzip";
+
+                var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+                using (var requestStream = request.GetRequestStream())
+                using (var gzip = new GZipStream(requestStream, CompressionMode.Compress))
+                {
+                    gzip.Write(bytes, 0, bytes.Length);
+                }
+            }
+            else
+            {
+                using (var streamWriter = new StreamWriter(request.GetRequestStream()))
+                {
+                    streamWriter.Write(json);
+                    streamWriter.Flush();
+                }
             }
 
             return request.GetResponse();
@@ -168,7 +187,13 @@ namespace Rhino.Compute
               function = "/" + function; // if not present
 
             string uri = $"{WebAddress}{function}".ToLower();
-            using (var client = new System.Net.Http.HttpClient())
+            using (var handler = new System.Net.Http.HttpClientHandler
+            {
+                AutomaticDecompression =
+                    System.Net.DecompressionMethods.GZip |
+                    System.Net.DecompressionMethods.Deflate
+            })
+            using (var client = new System.Net.Http.HttpClient(handler))
             {
                 client.DefaultRequestHeaders.Add("User-Agent", $"compute.rhino3d.cs/{Version}");
                 client.DefaultRequestHeaders
@@ -183,7 +208,28 @@ namespace Rhino.Compute
                 if (!string.IsNullOrWhiteSpace(ApiKey))
                     client.DefaultRequestHeaders.Add("RhinoComputeKey", ApiKey);
 
-                var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                System.Net.Http.HttpContent content;
+                if (UseRequestGzip)
+                {
+                    var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+                    using (var compressed = new MemoryStream())
+                    {
+                        using (var gzip = new GZipStream(compressed, CompressionMode.Compress, true))
+                        {
+                            gzip.Write(bytes, 0, bytes.Length);
+                        }
+
+                        content = new System.Net.Http.ByteArrayContent(compressed.ToArray());
+                    }
+
+                    content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+                    content.Headers.ContentEncoding.Add("gzip");
+                }
+                else
+                {
+                    content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                }
+
                 return await client.PostAsync(uri, content);
             }
         }
